@@ -1,1 +1,90 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
 
+from google.colab import files
+uploaded = files.upload()
+
+file_name = "DATA MACHINE LEARNING.xlsx"
+data = pd.read_excel(file_name, sheet_name="DATA GEOSPASIAL")
+
+print("Jumlah Kolom:", len(data.columns))
+print("Nama Kolom:\n", data.columns.tolist())
+data.head()
+
+features = [
+    "Kepadatan Fasilitas Keuangan",
+    "Kepadatan Fasilitas Kesehatan",
+    "Kepadatan Fasilitas Pendidikan",
+    "PDRB per Kapita",
+    "Kepadatan Penduduk",
+    "analisis proximity (jarak)"
+]
+
+df = data[features + ["Kabupaten/Kota"]].dropna()
+
+df["Indeks_Kesenjangan"] = df[[
+    "Kepadatan Fasilitas Keuangan",
+    "Kepadatan Fasilitas Kesehatan",
+    "Kepadatan Fasilitas Pendidikan"
+]].mean(axis=1)
+
+q1, q2 = df["Indeks_Kesenjangan"].quantile([0.33, 0.66])
+def classify(val):
+    if val <= q1:
+        return "Prioritas Tinggi"
+    elif val <= q2:
+        return "Potensi"
+    else:
+        return "Berkembang"
+
+df["Kategori_Kesenjangan"] = df["Indeks_Kesenjangan"].apply(classify)
+
+X = df[features]
+y = df["Kategori_Kesenjangan"]
+
+scaler = MinMaxScaler()
+X_scaled = scaler.fit_transform(X)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y, test_size=0.2, random_state=42, stratify=y
+)
+
+model = RandomForestClassifier(n_estimators=200, random_state=42)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+
+print("\n🔹 Classification Report:")
+print(classification_report(y_test, y_pred))
+
+cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
+plt.figure(figsize=(6,5))
+sns.heatmap(cm, annot=True, cmap="Blues", fmt="d",
+            xticklabels=model.classes_, yticklabels=model.classes_)
+plt.title("Confusion Matrix - Random Forest Classifier")
+plt.xlabel("Prediksi")
+plt.ylabel("Aktual")
+plt.show()
+
+importance = pd.DataFrame({
+    "Variabel": features,
+    "Tingkat_Pengaruh": model.feature_importances_
+}).sort_values(by="Tingkat_Pengaruh", ascending=False)
+
+plt.figure(figsize=(8,5))
+sns.barplot(data=importance, x="Tingkat_Pengaruh", y="Variabel", palette="viridis")
+plt.title("Feature Importance - Variabel Paling Berpengaruh")
+plt.show()
+
+hasil = df[["Kabupaten/Kota", "Indeks_Kesenjangan", "Kategori_Kesenjangan"]]
+hasil.to_excel("Hasil_Klasifikasi_Kesenjangan_Sumut.xlsx", index=False)
+
+print("\n✅ File hasil klasifikasi berhasil disimpan: Hasil_Klasifikasi_Kesenjangan_Sumut.xlsx")
+
+hasil.head(15)
