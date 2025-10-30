@@ -1,0 +1,82 @@
+!pip install Sastrawi pandas numpy scikit-learn matplotlib seaborn
+
+import pandas as pd
+import numpy as np
+import re
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.svm import LinearSVC
+from sklearn.metrics import classification_report, confusion_matrix
+
+data = {
+    'text': [
+        'Layanan BPJS di rumah sakit Medan sangat memuaskan',
+        'Sekolah negeri di Tapanuli kekurangan fasilitas belajar',
+        'Program pendidikan gratis membantu masyarakat miskin',
+        'Pelayanan kesehatan di Puskesmas sering lambat',
+        'Fasilitas rumah sakit di Sumatera Utara semakin baik',
+        'Biaya sekolah semakin mahal dan membebani orang tua'
+    ],
+    'sentiment': ['positive','negative','positive','negative','positive','negative']
+}
+
+df = pd.DataFrame(data)
+print(df.head())
+
+factory = StemmerFactory()
+stemmer = factory.create_stemmer()
+
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r'http\S+', '', text)
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    text = text.strip()
+    return text
+
+def preprocess(text):
+    text = clean_text(text)
+    text = stemmer.stem(text)
+    return text
+
+df['clean_text'] = df['text'].apply(preprocess)
+
+X_train, X_test, y_train, y_test = train_test_split(df['clean_text'], df['sentiment'], test_size=0.3, random_state=42)
+vectorizer = TfidfVectorizer(max_features=2000)
+X_train_tfidf = vectorizer.fit_transform(X_train)
+X_test_tfidf = vectorizer.transform(X_test)
+
+svm_model = LinearSVC()
+svm_model.fit(X_train_tfidf, y_train)
+y_pred = svm_model.predict(X_test_tfidf)
+
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
+
+cm = confusion_matrix(y_test, y_pred)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(y_test), yticklabels=np.unique(y_test))
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix SVM Sentimen Publik')
+plt.show()
+
+new_texts = [
+    "Layanan rumah sakit di Medan sangat cepat dan ramah",
+    "Sekolah di daerah terpencil kurang diperhatikan pemerintah",
+]
+
+new_clean = [preprocess(t) for t in new_texts]
+new_vec = vectorizer.transform(new_clean)
+preds = svm_model.predict(new_vec)
+
+for txt, p in zip(new_texts, preds):
+    print(f"Teks: {txt}\nPrediksi Sentimen: {p}\n")
+
+import joblib
+joblib.dump(svm_model, 'svm_sentimen_sumut.pkl')
+joblib.dump(vectorizer, 'tfidf_vectorizer.pkl')
+
+print("Model dan vectorizer berhasil disimpan.")
